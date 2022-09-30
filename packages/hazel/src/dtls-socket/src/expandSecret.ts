@@ -1,8 +1,8 @@
 import { BinaryWriter } from "@autil/helpers";
 import * as forge from "node-forge";
 
-export function expandSecret(key: ArrayBuffer, label: ArrayBuffer, initialSeed: ArrayBuffer): ArrayBuffer {
-  const writer = new ArrayBuffer(42);
+export function expandSecret(key: ArrayBuffer, label: ArrayBuffer, initialSeed: ArrayBuffer, size = 42): ArrayBuffer {
+  const writer = new ArrayBuffer(size);
   let writeHead = 0;
 
   const roundSeed = BinaryWriter.allocate(label.byteLength + initialSeed.byteLength);
@@ -19,7 +19,7 @@ export function expandSecret(key: ArrayBuffer, label: ArrayBuffer, initialSeed: 
 
   input.set(new Uint8Array(roundSeed.getBuffer().byteLength), 64);
 
-  while (writeHead < 42) {
+  while (writeHead < size) {
     hmac.update(hashA);
     hashA = hmac.digest().bytes();
 
@@ -28,8 +28,8 @@ export function expandSecret(key: ArrayBuffer, label: ArrayBuffer, initialSeed: 
     hmac.update(forge.util.binary.raw.encode(input));
     let roundOutput = forge.util.binary.raw.decode(hmac.digest().bytes());
 
-    if ((42 - writeHead) < roundOutput.byteLength) {
-      roundOutput = roundOutput.slice(0, 42 - writeHead);
+    if ((size - writeHead) < roundOutput.byteLength) {
+      roundOutput = roundOutput.slice(0, size - writeHead);
     }
 
     new Uint8Array(writer).set(roundOutput, writeHead);

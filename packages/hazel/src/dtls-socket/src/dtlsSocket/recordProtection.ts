@@ -20,7 +20,6 @@ export class Aes128GcmRecordProtection {
     combinedRandom.writeBytes(clientRandom);
 
     const labelEncoder = new TextEncoder();
-
     const expandedKey = BinaryReader.from(expandSecret(masterSecret, labelEncoder.encode("key expansion"), combinedRandom.getBuffer().buffer));
 
     const clientWriteKey = expandedKey.readBytes(16).getBuffer().buffer;
@@ -49,7 +48,7 @@ export class Aes128GcmRecordProtection {
 
     const associatedData = input.serialize();
 
-    const result = cipher.seal(nonce.getBuffer().buffer, input.getBuffer().buffer, associatedData.getBuffer().buffer);
+    const result = cipher.seal(nonce.getBuffer().buffer, input.getBuffer().buffer, associatedData.getBuffer().buffer.slice(0, 13));
 
     const writer = DtlsRecordWriter.allocateRecord(
       input.getContentType(),

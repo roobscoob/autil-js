@@ -41,8 +41,8 @@ export class Aes128Gcm {
     const output = new ArrayBuffer(plaintext.byteLength + Aes128Gcm.CipherTextOverhead);
 
     new Uint8Array(this.blockJ).set(new Uint8Array(nonce));
-    this.gctr(output, this.blockJ, 2, plaintext);
-    this.generateAuthTag(output.slice(plaintext.byteLength), output.slice(0, plaintext.byteLength), associatedData);
+    this.gctr(new Uint8Array(output), this.blockJ, 2, plaintext);
+    this.generateAuthTag(new Uint8Array(output).subarray(plaintext.byteLength), output.slice(0, plaintext.byteLength), associatedData);
 
     return output;
   }
@@ -62,22 +62,23 @@ export class Aes128Gcm {
 
     new Uint8Array(this.blockJ).set(new Uint8Array(nonce));
 
-    this.generateAuthTag(this.blockScratch, ciphertext, associatedData);
+    this.generateAuthTag(new Uint8Array(this.blockScratch), ciphertext, associatedData);
     if (arrayBufferEquals(this.blockScratch, authTag)) {
       throw new Error("Bad auth.");
     }
 
-    this.gctr(output, this.blockJ, 2, ciphertext);
+    this.gctr(new Uint8Array(output), this.blockJ, 2, ciphertext);
 
     return output;
   }
 
-  generateAuthTag(output: ArrayBuffer, ciphertext: ArrayBuffer, associatedData: ArrayBuffer) {
+  generateAuthTag(output: Uint8Array, ciphertext: ArrayBuffer, associatedData: ArrayBuffer) {
     new Uint8Array(this.blockS).fill(0);
 
     let fullBlocks = Math.floor(associatedData.byteLength / 16);
     this.ghash(this.blockS, associatedData, fullBlocks);
     if (fullBlocks * 16 < associatedData.byteLength) {
+      new Uint8Array(this.blockScratch).fill(0);
       new Uint8Array(this.blockScratch).set(new Uint8Array(associatedData).slice(fullBlocks * 16));
       this.ghash(this.blockS, this.blockScratch, 1);
     }
@@ -85,30 +86,32 @@ export class Aes128Gcm {
     fullBlocks = Math.floor(ciphertext.byteLength / 16);
     this.ghash(this.blockS, ciphertext, fullBlocks);
     if (fullBlocks * 16 < ciphertext.byteLength) {
+      new Uint8Array(this.blockScratch).fill(0);
       new Uint8Array(this.blockScratch).set(new Uint8Array(ciphertext).slice(fullBlocks * 16));
       this.ghash(this.blockS, this.blockScratch, 1);
     }
 
     const associatedDataLength = 8 * associatedData.byteLength;
     const ciphertextDataLength = 8 * ciphertext.byteLength;
-    new BigInt64Array(this.blockScratch)[0] = BigInt(associatedDataLength);
-    new BigInt64Array(this.blockScratch)[1] = BigInt(ciphertextDataLength);
+    const view = new DataView(this.blockScratch);
+    view.setBigInt64(0, BigInt(associatedDataLength));
+    view.setBigInt64(8, BigInt(ciphertextDataLength));
 
     this.ghash(this.blockS, this.blockScratch, 1);
     this.gctr(output, this.blockJ, 1, this.blockS);
   }
 
-  gctr(output: ArrayBuffer, counterBlock: ArrayBuffer, counter: number, data: ArrayBuffer) {
+  gctr(output: Uint8Array, counterBlock: ArrayBuffer, counter: number, data: ArrayBuffer) {
     let writeIdx = 0;
     const numBlocks = Math.floor((data.byteLength + 15) / 16);
     for (let i = 0; i < numBlocks; ++i) {
-      new Int32Array(counterBlock)[3] = counter;
+      new DataView(counterBlock).setInt32(12, counter, false);
       counter++;
       this.cipher.update(forge.util.createBuffer(counterBlock))
-      new Uint8Array(this.blockScratch).set(forge.util.binary.raw.decode(this.cipher.output.data.slice(this.cipher.output.length() - 16)));
+      new Uint8Array(this.blockScratch).set(forge.util.binary.raw.decode(this.cipher.output.data.slice(this.cipher.output.length() - 16)), 0);
 
       for (let j = 0; j < 16 && writeIdx < data.byteLength; ++j, ++writeIdx) {
-        new Uint8Array(output)[writeIdx] = new Uint8Array(data)[writeIdx] ^ new Uint8Array(this.blockScratch)[j];
+        output[writeIdx] = new Uint8Array(data)[writeIdx] ^ new Uint8Array(this.blockScratch)[j];
       }
     }
   }
