@@ -297,6 +297,7 @@ export class DtlsSocket extends Socket {
     this.epochState.state = HandshakeState.ExpectingCertificate;
     this.epochState.certificateFragments = undefined;
     this.epochState.certificateFragmentDataRecv = 0;
+    this.epochState.serverRandom = hello.getRandom();
     this.epochState.certificatePayload = new ArrayBuffer(0);
   }
 
