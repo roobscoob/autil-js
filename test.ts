@@ -14,7 +14,7 @@ function toArrayBuffer(buf: Buffer) {
 }
 
 
-(() => {
+(async () => {
   /*
     const nonce = Buffer.from("9a30cb330001000000000001", "hex");
     const key = Buffer.from("b4e68ac016d4e2615732b5c2e2b67dad", "hex");
@@ -29,7 +29,7 @@ function toArrayBuffer(buf: Buffer) {
 
     console.log(output.toString("hex"));*/
   
-  const client = hazel.V1HazelClient.connect(
+  const client = await hazel.V1HazelClient.connect(
     new hazel.DtlsSocket(new NodeUdpSocket("127.0.0.1", 22626)),
     { clientVersion: 0, username: "roobscoob" }
   );

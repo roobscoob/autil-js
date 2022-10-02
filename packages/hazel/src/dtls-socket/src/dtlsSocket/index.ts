@@ -72,6 +72,8 @@ export class DtlsSocket extends ClientSocket {
 
   protected messagesBuffer: ArrayBuffer[] = [];
 
+  protected resolveEvent?: () => {};
+
   constructor(protected readonly socket: ClientSocket) {
     super();
 
@@ -174,6 +176,10 @@ export class DtlsSocket extends ClientSocket {
       case HandshakeType.ServerHelloDone:
         this.epochState.verificationStream.push(message.serialize().getBuffer().buffer);
         return this.handleServerHelloDone();
+      case HandshakeType.Finished:
+        this.epochState.state = HandshakeState.Established;
+        this.resolveEvent?.();
+        return ;
     }
   }
 
