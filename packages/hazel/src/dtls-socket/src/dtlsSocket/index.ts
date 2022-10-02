@@ -1,4 +1,4 @@
-import { Socket } from "../../..";
+import { ClientSocket } from "../../..";
 import { BinaryObject, BinaryObjectInstance, BinaryReader, BinaryWriter } from "@autil/helpers";
 import { AlertPacket } from "../packets/alert";
 import { ClientHello } from "../packets/handshake/clientHello";
@@ -55,10 +55,7 @@ type EpochState = {
   certificatePayload: ArrayBuffer,
 }
 
-export class DtlsSocket extends Socket {
-  protected disconnectHandlers: Set<(reason?: string) => void> = new Set();
-  protected recieveHandlers: Set<(buffer: ArrayBuffer) => void> = new Set();
-
+export class DtlsSocket extends ClientSocket {
   protected packetHandlers: Map<BinaryObject<BinaryObjectInstance, []>, Set<(t: BinaryObjectInstance) => void>> = new Map();
 
   protected recieveMap: Map<number, Map<number, BinaryObjectInstance>> = new Map();
@@ -73,7 +70,7 @@ export class DtlsSocket extends Socket {
 
   protected messagesBuffer: ArrayBuffer[] = [];
 
-  constructor(protected readonly socket: Socket) {
+  constructor(protected readonly socket: ClientSocket) {
     super();
 
     socket.addRecieveHandler(bin => {
@@ -98,22 +95,6 @@ export class DtlsSocket extends Socket {
     }
   }
 
-  addDisconnectHandler(handler: (reason?: string) => void): void {
-    this.disconnectHandlers.add(handler);
-  }
-
-  addRecieveHandler(handler: (binary: ArrayBuffer) => void): void {
-    this.recieveHandlers.add(handler);
-  }
-
-  protected emitDisconnect(reason?: string): void {
-    this.disconnectHandlers.forEach(handler => handler(reason));
-  }
-
-  protected emitRecieve(binary: ArrayBuffer): void {
-    this.recieveHandlers.forEach(handler => handler(binary));
-  }
-
   send(binary: ArrayBuffer): void {
     throw new Error("TODO");
   }
@@ -123,13 +104,7 @@ export class DtlsSocket extends Socket {
 
     if (message.getContentType() === ContentType.Alert) {
       const alert = AlertPacket.deserialize(message);
-
-      if (alert.isFatal()) {
-        this.emitDisconnect(`DTLS Alert: ${alert.toString()}`);
-        return;
-      }
-
-      console.log(alert.toString());
+      this.emitError(new Error(`DTLS Alert: ${alert.toString()}`));
       return;
     }
 
@@ -358,7 +333,7 @@ export class DtlsSocket extends Socket {
     await new Promise((res, rej) => {
       this._connect().then(res, rej);
 
-      this.addDisconnectHandler(rej);
+      this.addErrorHandler(rej);
     })
   }
 
