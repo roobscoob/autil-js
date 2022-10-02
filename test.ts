@@ -2,6 +2,17 @@ import * as hazel from "@autil/hazel";
 import { NodeUdpSocket } from "@autil/node-udp-socket";
 import { BinaryReader } from "@autil/helpers";
 import { Aes128Gcm } from "@autil/hazel/src/dtls-socket/src/dtlsSocket/aes128gcm";
+import { expandSecret } from "@autil/hazel";
+
+function toArrayBuffer(buf: Buffer) {
+    const ab = new ArrayBuffer(buf.length);
+    const view = new Uint8Array(ab);
+    for (let i = 0; i < buf.length; ++i) {
+        view[i] = buf[i];
+    }
+    return ab;
+}
+
 
 (() => {
   /*
@@ -17,6 +28,7 @@ import { Aes128Gcm } from "@autil/hazel/src/dtls-socket/src/dtlsSocket/aes128gcm
     console.log(Buffer.from(output).toString("hex"));
 
     console.log(output.toString("hex"));*/
+  
   const client = hazel.V1HazelClient.connect(
     new hazel.DtlsSocket(new NodeUdpSocket("127.0.0.1", 22626)),
     { clientVersion: 0, username: "roobscoob" }

@@ -252,9 +252,13 @@ export class DtlsSocket extends Socket {
     randomSeed.write(this.epochState.serverRandom);
 
     const labelEncoder = new TextEncoder();
+    
+    console.log("shared", Buffer.from(res).toString("hex"));
+    console.log("master secret", Buffer.from(labelEncoder.encode("master secert")).toString("hex"));
+    console.log("random seed", Buffer.from(randomSeed.getBuffer().buffer).toString("hex"));
 
     // intentional typo due to typo in upstream https://github.com/willardf/Hazel-Networking/
-    const masterSecret = expandSecret(res, labelEncoder.encode("master secert"), new Uint8Array(randomSeed.getBuffer().buffer))
+    const masterSecret = expandSecret(res, labelEncoder.encode("master secert"), new Uint8Array(randomSeed.getBuffer().buffer), 48);
 
     if (this.epochState.selectedCipherSuite.equals(CipherSuite.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256)) {
       this.epochState.recordProtection = new Aes128GcmRecordProtection(
@@ -395,13 +399,6 @@ export class DtlsSocket extends Socket {
     const ccsr = DtlsRecordReader.fromRecord(ContentType.ChangeCipherSpec, this.protocolVersion, this.epoch, this.sequenceNumber++, new Uint8Array([1]).buffer);
 
     this.incrementEpoch();
-    
-
-    // const handshakeHash = crypto.createHash("sha256").update(Buffer.concat(this.nextEpoch.verificationStream)).digest();
-    // expandSecret(this.nextEpoch.serverVerification, this.nextEpoch.masterSecret, "server finished", handshakeHash);
-    // const expandKeyOutput = Buffer.alloc(12);
-    // expandSecret(expandKeyOutput, this.nextEpoch.masterSecret, "client finished", handshakeHash);
-    // writer.bytes(expandKeyOutput);
 
     const bytes = new Uint8Array(this.epochState.verificationStream.reduce((a, b) => a + b.byteLength, 0));
     let offset = 0;
@@ -419,13 +416,11 @@ export class DtlsSocket extends Socket {
 
     const handshakeHash = forge.md.sha256.create().update(forge.util.binary.raw.encode(bytes), "raw").digest();
     const labelEncoder = new TextEncoder();
-    const serverVerif = expandSecret(this.epochState.masterSecret, labelEncoder.encode("server finished"), forge.util.binary.raw.decode(handshakeHash.bytes()));
+    const serverVerif = expandSecret(this.epochState.masterSecret, labelEncoder.encode("server finished"), forge.util.binary.raw.decode(handshakeHash.bytes()), 42);
     const expandKeyOutput = expandSecret(this.epochState.masterSecret, labelEncoder.encode("client finished"), forge.util.binary.raw.decode(handshakeHash.bytes()), 12);
 
     const handshakeReader2 = HandshakeReader.fromHandshake(HandshakeType.Finished, this.handshakeSequence++, 0, 0, expandKeyOutput);
 
-    console.log(DtlsRecordReader.fromRecord(ContentType.Handshake, this.protocolVersion, this.epoch, this.sequenceNumber++, handshakeReader2.serialize().getBuffer().buffer));
-    
     const fhr = this.epochState.recordProtection!.encryptClientPlaintext(
       DtlsRecordReader.fromRecord(ContentType.Handshake, this.protocolVersion, this.epoch, this.sequenceNumber++, handshakeReader2.serialize().getBuffer().buffer));
 
