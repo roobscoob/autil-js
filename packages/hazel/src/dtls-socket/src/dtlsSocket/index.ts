@@ -24,12 +24,13 @@ import { Aes128GcmRecordProtection } from "./recordProtection";
 import { ClientKeyExchange } from "../packets/handshake/clientKeyExchange";
 
 enum HandshakeState {
-  Initializing,
+  Established,
   ExpectingServerHello,
   ExpectingCertificate,
   ExpectingServerKeyExchange,
   ExpectingServerHelloDone,
   ExpectingChangeCipherSpec,
+  Initializing
 }
 
 type EpochState = {
@@ -156,6 +157,16 @@ export class DtlsSocket extends Socket {
         return this.handleServerHello(ServerHello.deserialize(message));
       case HandshakeType.Certificate:
         if (message.getFullLength() == message.getBuffer().byteLength) {
+          const writer = new HandshakeReader( // make better
+            HandshakeType.Certificate,
+            message.getMessageSequence(),
+            0,
+            message.getFullLength(),
+            new ArrayBuffer(message.getFullLength())
+          );
+          const handshakeHeader = writer.serialize().getBuffer().buffer.slice(0, 12);
+          this.epochState.verificationStream.push(handshakeHeader);
+          this.epochState.verificationStream.push(message.getBuffer().buffer);
           this.handleCertificate(Certificate.deserialize(message));
         } else {
           if (!this.epochState.certificateFragments)
@@ -173,7 +184,7 @@ export class DtlsSocket extends Socket {
               message.getFullLength(),
               new ArrayBuffer(message.getFullLength())
             );
-            const handshakeHeader = writer.serialize().getBuffer().buffer.slice(0, 12);
+            const handshakeHeader = writer.serialize().getBuffer().buffer.slice(0, 12);;
             this.epochState.verificationStream.push(handshakeHeader);
             this.epochState.verificationStream.push(this.epochState.certificateFragments);
             this.handleCertificate(Certificate.deserialize(BinaryReader.from(this.epochState.certificateFragments)));
@@ -253,10 +264,6 @@ export class DtlsSocket extends Socket {
 
     const labelEncoder = new TextEncoder();
     
-    console.log("shared", Buffer.from(res).toString("hex"));
-    console.log("master secret", Buffer.from(labelEncoder.encode("master secert")).toString("hex"));
-    console.log("random seed", Buffer.from(randomSeed.getBuffer().buffer).toString("hex"));
-
     // intentional typo due to typo in upstream https://github.com/willardf/Hazel-Networking/
     const masterSecret = expandSecret(res, labelEncoder.encode("master secert"), new Uint8Array(randomSeed.getBuffer().buffer), 48);
 
@@ -338,12 +345,11 @@ export class DtlsSocket extends Socket {
       const buf = message.serialize().getBuffer().buffer;
 
       const handshakeReader = HandshakeReader.fromHandshake(message.getType(), this.handshakeSequence++, 0, buf.byteLength, buf);
-      
-      if (verifyStream) {
-        this.epochState.verificationStream.push(handshakeReader.serialize().getBuffer().buffer);
-      }
 
       writer.writeBytes(handshakeReader.serialize());
+    }
+    if (verifyStream) {
+      this.epochState.verificationStream.push(writer.getBuffer().buffer);
     }
 
     this.sendDtlsMessage(ContentType.Handshake, writer);
@@ -399,6 +405,11 @@ export class DtlsSocket extends Socket {
     const ccsr = DtlsRecordReader.fromRecord(ContentType.ChangeCipherSpec, this.protocolVersion, this.epoch, this.sequenceNumber++, new Uint8Array([1]).buffer);
 
     this.incrementEpoch();
+    
+    if (!retransmitting) {
+      this.epochState.verificationStream.push(cker.getBuffer().buffer);
+      handshakeReader.serialize().getBuffer().buffer
+    }
 
     const bytes = new Uint8Array(this.epochState.verificationStream.reduce((a, b) => a + b.byteLength, 0));
     let offset = 0;
@@ -407,19 +418,12 @@ export class DtlsSocket extends Socket {
       bytes.set(new Uint8Array(verif), offset);
       offset += verif.byteLength;
     }
-
-    console.log("verif stream 256:", forge.md.sha256.create().update(forge.util.binary.raw.encode(bytes)).digest().toHex());
-    
-    if (!retransmitting) {
-      this.epochState.verificationStream.push(cker.serialize().getBuffer().buffer);
-    }
-
     const handshakeHash = forge.md.sha256.create().update(forge.util.binary.raw.encode(bytes), "raw").digest();
     const labelEncoder = new TextEncoder();
     const serverVerif = expandSecret(this.epochState.masterSecret, labelEncoder.encode("server finished"), forge.util.binary.raw.decode(handshakeHash.bytes()), 42);
     const expandKeyOutput = expandSecret(this.epochState.masterSecret, labelEncoder.encode("client finished"), forge.util.binary.raw.decode(handshakeHash.bytes()), 12);
 
-    const handshakeReader2 = HandshakeReader.fromHandshake(HandshakeType.Finished, this.handshakeSequence++, 0, 0, expandKeyOutput);
+    const handshakeReader2 = HandshakeReader.fromHandshake(HandshakeType.Finished, this.handshakeSequence++, 0, expandKeyOutput.byteLength, expandKeyOutput);
 
     const fhr = this.epochState.recordProtection!.encryptClientPlaintext(
       DtlsRecordReader.fromRecord(ContentType.Handshake, this.protocolVersion, this.epoch, this.sequenceNumber++, handshakeReader2.serialize().getBuffer().buffer));
