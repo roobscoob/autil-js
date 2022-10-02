@@ -72,6 +72,8 @@ export class DtlsSocket extends ClientSocket {
 
   protected messagesBuffer: ArrayBuffer[] = [];
 
+  protected recordProtection?: Aes128GcmRecordProtection;
+
   protected resolveEvent?: () => {};
 
   constructor(protected readonly socket: ClientSocket) {
@@ -99,9 +101,16 @@ export class DtlsSocket extends ClientSocket {
       certificatePayload: new ArrayBuffer(0),
     }
   }
+  
+  async close() {
+    await this.socket.close();
+  }
 
   send(binary: ArrayBuffer): void {
-    throw new Error("TODO");
+    const outgoingRecord = DtlsRecordReader.fromRecord(ContentType.ApplicationData, new ProtocolVersion(1, 2), this.epoch, this.sequenceNumber++, binary);
+    const newRecord = this.epochState.recordProtection!.encryptClientPlaintext(outgoingRecord);
+
+    this.socket.send(newRecord.serialize().getBuffer().buffer);
   }
 
   protected handleMessage(message: DtlsRecordReader): void {
@@ -113,8 +122,20 @@ export class DtlsSocket extends ClientSocket {
       return;
     }
 
+    if (message.getContentType() === ContentType.ChangeCipherSpec) {
+      this.recordProtection = this.epochState.recordProtection;
+      this.epoch = this.epochState.epoch;
+      return;
+    }
+
     if (message.getContentType() === ContentType.Handshake) {
       while (message.hasBytesLeftToRead()) {
+        if (this.recordProtection) {
+          const decrypted = this.recordProtection!.decryptCiphertextFromServer(message);
+          // this.handleHandshake(decrypted.read(HandshakeReader));
+          continue;
+        }
+
         this.handleHandshake(message.read(HandshakeReader));
       }
       return;
@@ -179,7 +200,7 @@ export class DtlsSocket extends ClientSocket {
       case HandshakeType.Finished:
         this.epochState.state = HandshakeState.Established;
         this.resolveEvent?.();
-        return ;
+        return;
     }
   }
 

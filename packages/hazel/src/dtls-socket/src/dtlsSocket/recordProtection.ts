@@ -78,26 +78,21 @@ export class Aes128GcmRecordProtection {
     return this.decryptCiphertext(input, this.clientWriteCipher, this.clientWriteIv);
   }
 
-  decryptCiphertext(input: DtlsRecordReader | DtlsRecordWriter, cipher: Aes128Gcm, writeIv: ArrayBuffer): DtlsRecordWriter {
-    const nonce = BinaryWriter.allocate(8);
+  decryptCiphertext(input: DtlsRecordReader | DtlsRecordWriter, cipher: Aes128Gcm, writeIv: ArrayBuffer): DtlsRecordReader {
+    const nonce = BinaryWriter.allocate(12);
     nonce.writeBytes(writeIv);
     nonce.writeUInt16BE(input.getEpoch());
     nonce.writeUInt48BE(input.getSequenceNumber());
 
     const associatedData = input.serialize();
 
-    const result = cipher.open(nonce.getBuffer().buffer, input.getBuffer().buffer, associatedData.getBuffer().buffer);
+    const result = cipher.open(nonce.getBuffer().buffer, input.getBuffer().buffer, associatedData.getBuffer().buffer.slice(0, 13));
 
-    const writer = DtlsRecordWriter.allocateRecord(
-      input.getContentType(),
+    return DtlsRecordReader.fromRecord(input.getContentType(),
       input.getProtocolVersion(),
       input.getEpoch(),
       input.getSequenceNumber(),
-      result.byteLength
+      result
     );
-
-    writer.writeBytes(result);
-
-    return writer;
   }
 }

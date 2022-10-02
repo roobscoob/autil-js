@@ -1,5 +1,5 @@
 import { PacketAcknowledgementPromise } from ".";
-import { Socket } from "../..";
+import { ClientSocket } from "../..";
 import { V1AcknowledgementPacket, V1DisconnectPacket, V1HelloPacket, V1NormalPacket, V1PingPacket, V1ReliablePacket } from "../../protocol/packets/v1"
 import { V1Packets, V1ReliablePackets } from "./types";
 
@@ -11,7 +11,7 @@ export type ClientInfo = {
 export class V1HazelClient {
   protected purgatoryReliableMessage: Map<number, PacketAcknowledgementPromise> = new Map();
 
-  static async connect(socket: Socket, clientInfo: ClientInfo): Promise<V1HazelClient> {
+  static async connect(socket: ClientSocket, clientInfo: ClientInfo): Promise<V1HazelClient> {
     await socket.connect();
 
     const client = new V1HazelClient(socket);
@@ -21,7 +21,7 @@ export class V1HazelClient {
     return client;
   }
 
-  constructor(protected readonly socket: Socket) {
+  constructor(protected readonly socket: ClientSocket) {
     socket.addRecieveHandler(this.onRecieve);
   }
 
@@ -49,6 +49,8 @@ export class V1HazelClient {
     pap.catch(err => {
       this.purgatoryReliableMessage.delete(packet.getNonce());
     })
+
+    this.write(packet);
 
     return pap;
   }
