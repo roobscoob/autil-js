@@ -4,6 +4,7 @@ export abstract class ClientSocket {
 
   abstract send(binary: ArrayBuffer): void;
   abstract connect(): Promise<void>;
+  abstract close(): Promise<void>;
 
   addRecieveHandler(handler: (binary: ArrayBuffer) => void): void {
     this.recieveHandlers.add(handler);
