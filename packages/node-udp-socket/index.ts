@@ -1,36 +1,36 @@
 import * as NodeUdp from "node:dgram";
-import { Socket } from "@autil/hazel"
+import { ClientSocket } from "@autil/hazel"
 
-export class NodeUdpSocket extends Socket {
-  protected readonly socket: NodeUdp.Socket;
-  protected readonly recieveHandlers: Set<(binary: ArrayBuffer) => void> = new Set();
-  protected readonly disconnectHandlers: Set<() => void> = new Set();
+export class NodeUdpSocket extends ClientSocket {
+  protected socket?: NodeUdp.Socket;
 
   constructor(protected ip: string, protected port: number) {
     super();
+  }
 
+  async connect() {
     this.socket = NodeUdp.createSocket("udp4");
 
     this.socket.addListener("message", message => {
-      this.recieveHandlers.forEach(handler => handler(message.buffer));
+      this.emitRecieve(message);
     })
 
-    this.socket.addListener("close", () => {
-      this.disconnectHandlers.forEach(handler => handler());
+    this.socket.addListener("error", (error) => {
+      this.emitError(error)
     })
   }
 
-  async connect() {}
+  async close(): Promise<void> {
+    if (this.socket == undefined)
+      throw new Error("Cannot close a socket that wasn't opened.");
+
+    this.socket.close();
+  }
 
   send(binary: ArrayBuffer): void {
+    if (this.socket == undefined)
+      throw new Error("Canont send on a socket that wasn't opened.");
+
     this.socket.send(new Uint8Array(binary), this.port, this.ip);
-  }
-
-  addRecieveHandler(handler: (binary: ArrayBuffer) => void): void {
-    this.recieveHandlers.add(handler);
-  }
-
-  addDisconnectHandler(handler: () => void): void {
-    this.disconnectHandlers.add(handler);
   }
 }
