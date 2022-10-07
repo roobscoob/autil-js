@@ -1,5 +1,4 @@
-import { BinaryWriter } from "..";
-import { BinaryReaderStarvationError, BinaryObject, BinaryObjectInstance } from "./";
+import { BinaryReaderStarvationError, BinaryObject, BinaryWriter } from "./";
 
 export class BinaryReader {
   static from(buffer: Buffer | DataView | ArrayBuffer | BinaryWriter): BinaryReader {
@@ -9,7 +8,7 @@ export class BinaryReader {
     if (buffer instanceof BinaryWriter)
       return this.from(buffer.getBuffer());
 
-    return this.from(buffer.buffer);
+    return this.from(buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength));
   }
 
   protected constructor(bufferIn: ArrayBuffer) {
@@ -41,6 +40,10 @@ export class BinaryReader {
     return this.buffer;
   }
 
+  getRemainingBuffer() {
+    return this.buffer.buffer.slice(this.readHead)
+  }
+
   clone() {
     return BinaryReader.from(this.getBuffer());
   }
@@ -58,12 +61,44 @@ export class BinaryReader {
   readSInt16BE(): number { return this.buffer.getInt16(this.incrHead(2), false) }
   readUInt16BE(): number { return this.buffer.getUint16(this.incrHead(2), false) }
 
+  /**
+   * WARNING: SLOW. No native call for reading UInt24s.
+   */
   readUInt24BE(): number {
     return (this.readUInt8() << 16) | (this.readUInt8() << 8) | this.readUInt8();
   }
 
+  /**
+   * WARNING: SLOW. No native call for reading SInt24s.
+   */
+  readSInt24BE(): number {
+    const val = this.readUInt24BE();
+    const neg = val & 0x80_00_00;
+
+    if (!neg)
+      return val;
+
+    return (0xFF_FF_FF - val + 1) * -1;
+  }
+
+  /**
+   * WARNING: SLOW. No native call for reading UInt24s.
+   */
   readUInt24LE(): number {
     return this.readUInt8() | (this.readUInt8() << 8) | (this.readUInt8() << 16);
+  }
+
+  /**
+   * WARNING: SLOW. No native call for reading SInt24s.
+   */
+  readSInt24LE(): number {
+    const val = this.readUInt24LE();
+    const neg = val & 0x80_00_00;
+
+    if (!neg)
+      return val;
+
+    return (0xFF_FF_FF - val + 1) * -1;
   }
 
   readSInt32LE(): number { return this.buffer.getInt32(this.incrHead(4), true) }
@@ -71,11 +106,51 @@ export class BinaryReader {
   readSInt32BE(): number { return this.buffer.getInt32(this.incrHead(4), false) }
   readUInt32BE(): number { return this.buffer.getUint32(this.incrHead(4), false) }
 
+  /**
+   * WARNING: SLOW. No native call for reading UInt48s.
+   */
   readUInt48BE(): number {
-    return (this.readUInt8() << 40) | (this.readUInt8() << 32) | (this.readUInt8() << 24) | (this.readUInt8() << 16) | (this.readUInt8() << 8) | this.readUInt8()
+    return (this.readUInt24BE() * 0x1000000) + this.readUInt24BE();
   }
+
+  /**
+   * WARNING: SLOW. No native call for reading SInt48s.
+   */
+  readSInt48BE(): number {
+    const val = this.readUInt48BE();
+    const neg = val >= 0x800000_000000;
+
+    if (!neg)
+      return val;
+
+    return (0xFFFFFF_FFFFFF - val + 1) * -1;
+  }
+
+  /**
+   * WARNING: SLOW. No native call for reading UInt48s.
+   */
   readUInt48LE(): number {
-    return this.readUInt8() | (this.readUInt8() << 8) | (this.readUInt8() << 16) | (this.readUInt8() << 24) | (this.readUInt8() << 32) | (this.readUInt8() << 40)
+    let binary = this.readUInt8();
+    binary |= this.readUInt8() << 8;
+    binary |= this.readUInt8() << 16;
+    binary |= this.readUInt8() << 24;
+    binary >>>= 0;
+    binary += this.readUInt8() * 0x100000000;
+    binary += this.readUInt8() * 0x10000000000;
+    return binary;
+  }
+
+  /**
+   * WARNING: SLOW. No native call for reading SInt48s.
+   */
+  readSInt48LE(): number {
+    const val = this.readUInt48LE();
+    const neg = val >= 0x800000_000000;
+
+    if (!neg)
+      return val;
+
+    return (0xFFFFFF_FFFFFF - val + 1) * -1;
   }
 
   readFloat32LE(): number { return this.buffer.getFloat32(this.incrHead(4), true) }
@@ -111,11 +186,21 @@ export class BinaryReader {
 
   readString(length: number): string { return new TextDecoder().decode(this.readBytes(length).getBuffer().buffer) }
 
-  read<T extends BinaryObject<any, any>>(object: T, ...args: T extends BinaryObject<any, infer ArgT> ? ArgT : []): T["prototype"] { return object.deserialize(this, ...(args as any)) }
+  read<T extends BinaryObject<any, any> | ((reader: BinaryReader, ...args: any[]) => any)>(object: T, ...args: T extends BinaryObject<any, infer ArgT> ? ArgT : T extends (arg0: any, ...args: infer ArgT) => any ? ArgT : []): T extends BinaryObject<infer Type, any> ? Type : T extends (...args: any[]) => infer Type ? Type : never { return "deserialize" in object ? object.deserialize(this, ...(args as any)) : object(this, ...(args as any)) }
 
-  *readRemaining<T extends BinaryObjectInstance>(readFn: (reader: BinaryReader) => T): Generator<T> {
+  *readRemaining<T>(readFn: (reader: BinaryReader) => T): Generator<T> {
     while (this.hasBytesLeftToRead()) {
       yield readFn(this);
     }
+  }
+
+  readArray<T>(count: number, readFn: (reader: BinaryReader) => T): T[] {
+    let arr = new Array(count);
+
+    for (let i = 0; i < count; i++) {
+      arr[i] = readFn(this);
+    }
+
+    return arr;
   }
 }

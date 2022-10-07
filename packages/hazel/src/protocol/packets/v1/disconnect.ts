@@ -1,35 +1,26 @@
 import { BinaryObjectInstance, BinaryReader, BinaryWriter } from "@autil/helpers";
 import { MessageReader } from "../../types/message/reader";
+import { BasePacket } from "./basePacket";
+import { SendOption } from "./sendOption";
 
-export class V1DisconnectPacket implements BinaryObjectInstance {
+export class V1DisconnectPacket extends BasePacket implements BinaryObjectInstance {
   static deserialize(reader: BinaryReader) {
-    const isForced = reader.readUInt8() === 1;
-    let disconnectReason: MessageReader | undefined;
-
-    if (isForced) {
-      disconnectReason = reader.read(MessageReader);
-    }
-
-    return new V1DisconnectPacket(
-      isForced,
-      disconnectReason,
-    );
+    return new V1DisconnectPacket(reader.getRemainingBuffer());
   }
 
-  constructor(protected readonly _isForced: boolean, protected readonly reason: MessageReader | undefined) {}
+  constructor(protected readonly reason: ArrayBuffer) { super() }
 
-  shouldAcknowledge(): false { return false }
+  isDisconnect(): this is V1DisconnectPacket {
+    return true;
+  }
 
-  isForced(): boolean { return this._isForced }
-  getReason(): MessageReader | undefined { return this.reason }
+  getReason() { return this.reason }
 
   serialize(): BinaryWriter {
-    const reason = this.getReason();
-    const writer = BinaryWriter.allocate(reason ? reason.getBuffer().byteLength + 4 : 1);
+    const writer = BinaryWriter.allocate(1 + this.reason.byteLength);
 
-    writer.writeBoolean(this.isForced());
-
-    if (reason) writer.write(reason);
+    writer.writeUInt8(SendOption.Disconnect);
+    writer.writeBytes(this.reason);
 
     return writer;
   }

@@ -17,12 +17,12 @@ export class PacketAcknowledgementPromise {
 
     this.timeout = setInterval(() => {
       if (this.getSendCount() == 10) {
-        this.setDropped();
+        this.setDropped(`Packet not acknowledged after 10 resends`);
         return;
       }
 
       this.attemptSend();
-    }, 2000)
+    }, 1000)
 
     this.attemptSend();
   }
@@ -41,15 +41,15 @@ export class PacketAcknowledgementPromise {
     this.resolve()
   }
 
-  setDropped() {
+  setDropped(reason: string) {
     this.cleanup();
-    this.reject(new Error("Packet was not acked"))
+    this.reject(new Error(`Packet in transit dropped: ${reason}`))
   }
 
   attemptSend() {
     this.incrementSendCount();
 
-    this.getClient().write(this.getPacket());
+    this.getClient().writeHazel(this.getPacket());
   }
 
   then(onFulfilled: () => void, onRejected?: (reason?: any) => void): this {
@@ -64,5 +64,16 @@ export class PacketAcknowledgementPromise {
     this.rejectListeners.add(onRejected);
 
     return this;
+  }
+
+  finally(onFinally: () => void): this {
+    this.rejectListeners.add(onFinally);
+    this.resolveListeners.add(onFinally);
+
+    return this;
+  }
+
+  get [Symbol.toStringTag]() {
+    return 'PacketPromise';
   }
 }
