@@ -1,6 +1,5 @@
 import { BinaryReader, BinaryWriter } from "@autil/helpers";
-import * as forge from "node-forge";
-import { DtlsRecordReader, DtlsRecordWriter, expandSecret } from "..";
+import { ContentType, DtlsRecordReader, DtlsRecordWriter, expandSecret, ProtocolVersion } from "../index";
 import { Aes128Gcm } from "./aes128gcm";
 
 export class Aes128GcmRecordProtection {
@@ -20,8 +19,7 @@ export class Aes128GcmRecordProtection {
     combinedRandom.writeBytes(clientRandom);
 
     const labelEncoder = new TextEncoder();
-
-    const expandedKey = BinaryReader.from(expandSecret(masterSecret, labelEncoder.encode("key expansion"), combinedRandom.getBuffer().buffer));
+    const expandedKey = BinaryReader.from(expandSecret(masterSecret, labelEncoder.encode("key expansion"), combinedRandom.getBuffer().buffer, 42));
 
     const clientWriteKey = expandedKey.readBytes(16).getBuffer().buffer;
     const serverWriteKey = expandedKey.readBytes(16).getBuffer().buffer;
@@ -31,6 +29,14 @@ export class Aes128GcmRecordProtection {
 
     this.clientWriteCipher = new Aes128Gcm(clientWriteKey);
     this.serverWriteCipher = new Aes128Gcm(serverWriteKey);
+  }
+
+  getEncryptedSize(dataSize: number) {
+    return dataSize + Aes128Gcm.TagSize;
+  }
+
+  getDecryptedSize(dataSize: number) {
+    return dataSize - Aes128Gcm.TagSize;
   }
 
   encryptServerPlaintext(input: DtlsRecordReader | DtlsRecordWriter) {
@@ -49,7 +55,7 @@ export class Aes128GcmRecordProtection {
 
     const associatedData = input.serialize();
 
-    const result = cipher.seal(nonce.getBuffer().buffer, input.getBuffer().buffer, associatedData.getBuffer().buffer);
+    const result = cipher.seal(nonce.getBuffer().buffer, input.getBuffer().buffer, associatedData.getBuffer().buffer.slice(0, 13));
 
     const writer = DtlsRecordWriter.allocateRecord(
       input.getContentType(),
@@ -72,26 +78,29 @@ export class Aes128GcmRecordProtection {
     return this.decryptCiphertext(input, this.clientWriteCipher, this.clientWriteIv);
   }
 
-  decryptCiphertext(input: DtlsRecordReader | DtlsRecordWriter, cipher: Aes128Gcm, writeIv: ArrayBuffer): DtlsRecordWriter {
-    const nonce = BinaryWriter.allocate(8);
+  decryptCiphertext(input: DtlsRecordReader | DtlsRecordWriter, cipher: Aes128Gcm, writeIv: ArrayBuffer): DtlsRecordReader {
+    const nonce = BinaryWriter.allocate(12);
     nonce.writeBytes(writeIv);
     nonce.writeUInt16BE(input.getEpoch());
     nonce.writeUInt48BE(input.getSequenceNumber());
 
-    const associatedData = input.serialize();
+    const decryptedRecord = DtlsRecordWriter.allocateRecord(
+      ContentType.Handshake,
+      new ProtocolVersion(1, 2),
+      input.getEpoch(),
+      input.getSequenceNumber(),
+      this.getDecryptedSize(input.getBuffer().byteLength)
+    );
+    
+    const associatedData = decryptedRecord.serialize();
 
-    const result = cipher.open(nonce.getBuffer().buffer, input.getBuffer().buffer, associatedData.getBuffer().buffer);
+    const result = cipher.open(nonce.getBuffer().buffer, input.getBuffer().buffer, associatedData.getBuffer().buffer.slice(0, 13));
 
-    const writer = DtlsRecordWriter.allocateRecord(
-      input.getContentType(),
+    return DtlsRecordReader.fromRecord(input.getContentType(),
       input.getProtocolVersion(),
       input.getEpoch(),
       input.getSequenceNumber(),
-      result.byteLength
+      result
     );
-
-    writer.writeBytes(result);
-
-    return writer;
   }
 }

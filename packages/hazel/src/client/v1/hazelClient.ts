@@ -114,6 +114,8 @@ export class V1HazelClient extends NetworkClient {
       this.reliableMessagesInTransit.delete(packet.getNonce());
     })
 
+    this.write(packet);
+
     return pap;
   }
 
