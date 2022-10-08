@@ -133,10 +133,10 @@ export class InnerslothHttpApi {
 
   static async matchmakerFind(matchmakerBaseUrl: string, matchmakerToken: string, filters: {
     quickChat: "FreeChatOrQuickChat" | "QuickChatOnly",
-    mapId: number,
-    lang: number,
-    platformFlags: number,
-    numImpostors: number,
+    mapId?: number,
+    lang?: number,
+    platformFlags?: number,
+    numImpostors?: number,
   }): Promise<{
     IP: number,
     Port: number,
