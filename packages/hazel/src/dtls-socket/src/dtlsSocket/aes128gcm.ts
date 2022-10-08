@@ -63,7 +63,7 @@ export class Aes128Gcm {
     new Uint8Array(this.blockJ).set(new Uint8Array(nonce));
 
     this.generateAuthTag(new Uint8Array(this.blockScratch), ciphertext, associatedData);
-    if (arrayBufferEquals(this.blockScratch, authTag)) {
+    if (!arrayBufferEquals(this.blockScratch, authTag)) {
       throw new Error("Bad auth.");
     }
 

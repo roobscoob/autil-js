@@ -1,5 +1,5 @@
 import { BinaryReader, BinaryWriter } from "@autil/helpers";
-import { DtlsRecordReader, DtlsRecordWriter, expandSecret } from "../index";
+import { ContentType, DtlsRecordReader, DtlsRecordWriter, expandSecret, ProtocolVersion } from "../index";
 import { Aes128Gcm } from "./aes128gcm";
 
 export class Aes128GcmRecordProtection {
@@ -36,7 +36,7 @@ export class Aes128GcmRecordProtection {
   }
 
   getDecryptedSize(dataSize: number) {
-    return dataSize + Aes128Gcm.TagSize;
+    return dataSize - Aes128Gcm.TagSize;
   }
 
   encryptServerPlaintext(input: DtlsRecordReader | DtlsRecordWriter) {
@@ -84,7 +84,15 @@ export class Aes128GcmRecordProtection {
     nonce.writeUInt16BE(input.getEpoch());
     nonce.writeUInt48BE(input.getSequenceNumber());
 
-    const associatedData = input.serialize();
+    const decryptedRecord = DtlsRecordWriter.allocateRecord(
+      ContentType.Handshake,
+      new ProtocolVersion(1, 2),
+      input.getEpoch(),
+      input.getSequenceNumber(),
+      this.getDecryptedSize(input.getBuffer().byteLength)
+    );
+    
+    const associatedData = decryptedRecord.serialize();
 
     const result = cipher.open(nonce.getBuffer().buffer, input.getBuffer().buffer, associatedData.getBuffer().buffer.slice(0, 13));
 

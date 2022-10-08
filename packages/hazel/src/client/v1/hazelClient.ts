@@ -1,3 +1,4 @@
+import { BinaryWriter } from "@autil/helpers";
 import { PacketAcknowledgementPromise } from ".";
 import { ClientSocket } from "../..";
 import { V1AcknowledgementPacket, V1DisconnectPacket, V1HelloPacket, V1NormalPacket, V1PingPacket, V1ReliablePacket } from "../../protocol/packets/v1"
@@ -37,8 +38,6 @@ export class V1HazelClient {
 
   async sendHello(clientInfo: ClientInfo) {
     const packet = new V1HelloPacket(this.getNextNonce(), 1, clientInfo.clientVersion, clientInfo.username);
-
-    return this.sendReliableLike(packet);
   }
 
   protected sendReliableLike(packet: V1ReliablePackets): PacketAcknowledgementPromise {

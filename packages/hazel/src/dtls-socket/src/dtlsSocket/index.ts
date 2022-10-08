@@ -19,7 +19,7 @@ import { Certificate } from "../packets/handshake/certificate";
 import * as forge from "node-forge";
 import { ServerKeyExchange } from "../packets/handshake/serverKeyExchange";
 import * as x25519 from "@stablelib/x25519";
-import { expandSecret } from "..";
+import { DtlsRecordWriter, expandSecret } from "..";
 import { Aes128GcmRecordProtection } from "./recordProtection";
 import { ClientKeyExchange } from "../packets/handshake/clientKeyExchange";
 
@@ -74,13 +74,16 @@ export class DtlsSocket extends ClientSocket {
 
   protected recordProtection?: Aes128GcmRecordProtection;
 
-  protected resolveEvent?: () => {};
+  protected resolveEvent?: () => any;
 
   constructor(protected readonly socket: ClientSocket) {
     super();
 
     socket.addRecieveHandler(bin => {
-      this.handleMessage(BinaryReader.from(bin).read(DtlsRecordReader));
+      const reader = BinaryReader.from(bin);
+      while (reader.hasBytesLeftToRead()) {
+        this.handleMessage(reader.read(DtlsRecordReader));
+      }
     });
 
     this.resetConnectionState();
@@ -132,13 +135,19 @@ export class DtlsSocket extends ClientSocket {
       while (message.hasBytesLeftToRead()) {
         if (this.recordProtection) {
           const decrypted = this.recordProtection!.decryptCiphertextFromServer(message);
-          // this.handleHandshake(decrypted.read(HandshakeReader));
+          this.handleHandshake(decrypted.read(HandshakeReader));
+          message.readBytes(this.recordProtection!.getEncryptedSize(decrypted.getBuffer().byteLength));
           continue;
         }
 
         this.handleHandshake(message.read(HandshakeReader));
       }
       return;
+    }
+
+    if (message.getContentType() === ContentType.ApplicationData) {
+      const decrypted = this.recordProtection!.decryptCiphertextFromServer(message);
+      this.emitRecieve(decrypted.getBuffer().buffer);
     }
   }
 
@@ -472,6 +481,8 @@ export class DtlsSocket extends ClientSocket {
     this.resetConnectionState();
     this.sendClientHello();
 
-    await new Promise(r => {});
+    await new Promise<void>(r => {
+      this.resolveEvent = () => { r() };
+    });
   }
 }
