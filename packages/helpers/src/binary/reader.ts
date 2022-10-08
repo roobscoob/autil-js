@@ -158,7 +158,7 @@ export class BinaryReader {
   readFloat64LE(): number { return this.buffer.getFloat64(this.incrHead(8), true) }
   readFloat64BE(): number { return this.buffer.getFloat64(this.incrHead(8), false) }
 
-  readPackedInt32(): number {
+  readPackedSInt32(): number {
     let readMore = true;
     let shift = 0;
     let output = 0;
@@ -180,7 +180,7 @@ export class BinaryReader {
     return output;
   }
 
-  readPackedUInt32(): number { return this.readPackedInt32() >>> 0 }
+  readPackedUInt32(): number { return this.readPackedSInt32() >>> 0 }
 
   readBytes(length: number) { return BinaryReader.from(this.buffer.buffer.slice(...this.incrHeadRange(length))) }
 
@@ -188,17 +188,17 @@ export class BinaryReader {
 
   read<T extends BinaryObject<any, any> | ((reader: BinaryReader, ...args: any[]) => any)>(object: T, ...args: T extends BinaryObject<any, infer ArgT> ? ArgT : T extends (arg0: any, ...args: infer ArgT) => any ? ArgT : []): T extends BinaryObject<infer Type, any> ? Type : T extends (...args: any[]) => infer Type ? Type : never { return "deserialize" in object ? object.deserialize(this, ...(args as any)) : object(this, ...(args as any)) }
 
-  *readRemaining<T>(readFn: (reader: BinaryReader) => T): Generator<T> {
+  *readRemaining<T extends BinaryObject<any, any> | ((reader: BinaryReader, ...args: any[]) => any)>(object: T, ...args: T extends BinaryObject<any, infer ArgT> ? ArgT : T extends (arg0: any, ...args: infer ArgT) => any ? ArgT : []): Generator<T extends BinaryObject<infer Type, any> ? Type : T extends (...args: any[]) => infer Type ? Type : never> {
     while (this.hasBytesLeftToRead()) {
-      yield readFn(this);
+      yield this.read(object, ...args);
     }
   }
 
-  readArray<T>(count: number, readFn: (reader: BinaryReader) => T): T[] {
+  readArray<T extends BinaryObject<any, any> | ((reader: BinaryReader, ...args: any[]) => any)>(count: number, object: T, ...args: T extends BinaryObject<any, infer ArgT> ? ArgT : T extends (arg0: any, ...args: infer ArgT) => any ? ArgT : []): (T extends BinaryObject<infer Type, any> ? Type : T extends (...args: any[]) => infer Type ? Type : never)[] {
     let arr = new Array(count);
 
     for (let i = 0; i < count; i++) {
-      arr[i] = readFn(this);
+      arr[i] = this.read(object, ...args);
     }
 
     return arr;

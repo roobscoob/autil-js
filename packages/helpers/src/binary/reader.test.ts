@@ -251,3 +251,100 @@ test("ReadFloat64LE (NAN)", () => {
 
   expect(binary.readFloat64LE()).toBeNaN();
 })
+
+test("ReadPackedUInt32", () => {
+  const binary = BinaryReader.from(Buffer.from("dcfcffff0f45a08a20", "hex"));
+
+  expect(binary.readPackedUInt32()).toBe(4294966876);
+  expect(binary.readPackedUInt32()).toBe(69);
+  expect(binary.readPackedUInt32()).toBe(525600);
+  expect(binary.countRemainingBytes()).toBe(0);
+  expect(binary.readPackedUInt32).toThrowError()
+})
+
+test("ReadPackedSInt32", () => {
+  const binary = BinaryReader.from(Buffer.from("dcfcffff0f45a08a20", "hex"));
+
+  expect(binary.readPackedSInt32()).toBe(-420);
+  expect(binary.readPackedSInt32()).toBe(69);
+  expect(binary.readPackedSInt32()).toBe(525600);
+  expect(binary.countRemainingBytes()).toBe(0);
+  expect(binary.readPackedSInt32).toThrowError()
+})
+
+test("readBytes", () => {
+  const binary = BinaryReader.from(Buffer.from("010203", "hex"));
+  const subbinary = binary.readBytes(2);
+
+
+  expect(subbinary.readUInt8()).toBe(1);
+  expect(subbinary.readUInt8()).toBe(2);
+  expect(subbinary.countRemainingBytes()).toBe(0);
+  expect(binary.readUInt8()).toBe(3);
+  expect(binary.countRemainingBytes()).toBe(0);
+  expect(binary.readBytes.bind(binary, 1)).toThrowError()
+})
+
+test("readString ASCII", () => {
+  const binary = BinaryReader.from(Buffer.from("4141414142424242", "hex"));
+
+  expect(binary.readString(4)).toBe("AAAA");
+  expect(binary.readString(4)).toBe("BBBB");
+})
+
+test("readString UTF-8", () => {
+  const binary = BinaryReader.from(Buffer.from("f09f9880", "hex"));
+
+  expect(binary.readString(4)).toBe("😀");
+})
+
+test("read through a reader function", () => {
+  const binary = BinaryReader.from(Buffer.from("0102", "hex"));
+
+  expect(binary.read(r => ({ a: r.readUInt8(), b: r.readUInt8() })))
+    .toEqual({ a: 1, b: 2 });
+})
+
+test("read through a argumented reader function", () => {
+  const binary = BinaryReader.from(Buffer.from("0102", "hex"));
+
+  expect(binary.read((r, c: number) => ({ a: r.readUInt8(), b: r.readUInt8(), c }), 5))
+    .toEqual({ a: 1, b: 2, c: 5 });
+})
+
+test("read through a reader object", () => {
+  const binary = BinaryReader.from(Buffer.from("0102", "hex"));
+
+  const obj = binary.read(class {
+    static deserialize(reader: BinaryReader) {
+      return new this(reader.readUInt8(), reader.readUInt8());
+    }
+
+    constructor(protected readonly A: number, protected readonly B: number) {}
+
+    getA() { return this.A }
+    getB() { return this.B }
+  });
+
+  expect(obj.getA()).toBe(1);
+  expect(obj.getB()).toBe(2);
+})
+
+test("read remaining", () => {
+  const binary = BinaryReader.from(Buffer.from("01020304", "hex"));
+
+  const gen = binary.readRemaining(r => ({ a: r.readUInt8(), b: r.readUInt8() }))
+  
+  expect(binary.countRemainingBytes()).toBe(4);
+  expect(gen.next()).toEqual({ done: false, value: { a: 1, b: 2 }});
+  expect(gen.next()).toEqual({ done: false, value: { a: 3, b: 4 }});
+  expect(gen.next()).toEqual({ done: true });
+  expect(binary.countRemainingBytes()).toBe(0);
+})
+
+test("read array", () => {
+  const binary = BinaryReader.from(Buffer.from("010203", "hex"));
+
+  expect(binary.readArray(3, r => r.readUInt8())).toEqual([1, 2, 3]);
+  expect(binary.countRemainingBytes()).toBe(0);
+})
