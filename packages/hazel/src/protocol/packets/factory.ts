@@ -8,6 +8,6 @@ const versionPacketFactoryMap = {
 
 export abstract class HazelPacketFactory {
   static fromVersion(versionNumber: number) {
-    return versionPacketFactoryMap[versionNumber];
+    return new versionPacketFactoryMap[versionNumber]();
   }
 }

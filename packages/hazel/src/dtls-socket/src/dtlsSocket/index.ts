@@ -356,8 +356,12 @@ export class DtlsSocket extends ClientSocket {
     this.messagesBuffer = [];
   }
 
+  close(): Promise<void> {
+    throw new Error("Stub.");
+  }
+
   async connect(): Promise<void> {
-    await this.socket.connect();
+    await this.socket.connect()
 
     await new Promise((res, rej) => {
       this._connect().then(res, rej);

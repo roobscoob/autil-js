@@ -29,7 +29,7 @@ export type EosAccessTokenRequest<T extends "client_credentials" | "external_aut
   grantType: T,
   nonce?: string,
   deploymentId?: string,
-  displayName?: string,
+  display_name?: string,
 } & (T extends "external_auth" ? {
   nonce: string,
   deploymentId: string,
